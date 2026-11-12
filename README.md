@@ -181,6 +181,24 @@ Offline tests always run. The end-to-end test builds a synthetic invoice PDF,
 runs the real pipeline, and asserts the invoice number and total come back exact.
 It skips with a clear message when Ollama isn't up.
 
+### Accuracy on public data
+
+`eval.py` scores the pipeline against labelled documents: exact-match per field
+before and after the verify pass, how often a wrong document was flagged for
+review, and how often a correct one was flagged anyway.
+
+```bash
+.venv/backend/bin/python eval.py path/to/sroie_entities -n 20   # images + X.txt labels
+.venv/backend/bin/pip install datasets pillow                   # once, for CORD
+.venv/backend/bin/python eval.py --cord 20 --known-type
+```
+
+SROIE maps to `merchant_name`, `transaction_date`, `total_amount`; CORD to
+subtotal, tax, total and item count. Both are receipts; there is no public
+bank-statement set, so those schemas are only measured on your own documents
+(a folder of files each with an `X.json` label in schema field names).
+A page takes ~1-3 minutes, so keep `-n` small.
+
 ## Review and quality
 
 The UI has three views: **Process**, **Review queue** and **Quality**. A job

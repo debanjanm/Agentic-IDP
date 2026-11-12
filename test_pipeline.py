@@ -579,6 +579,41 @@ def test_registry_rejects_malformed_x_entity_hints():
         registry.validate_schema(registry.load(t))
 
 
+def test_eval_loads_sroie_labels_and_scores_the_verifier():
+    import eval as ev  # the eval.py script; no model needed for this
+
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "r1.jpg").write_bytes(b"x")
+        (Path(tmp) / "r1.txt").write_text('{"company": "ACME SDN BHD", "date": "25/12/2018", "address": "x", "total": "9.00"}')
+        (Path(tmp) / "r2.jpg").write_bytes(b"x")  # no label -> skipped
+        [(path, truth)] = ev.load_dir(tmp)
+    assert path.name == "r1.jpg"
+    assert truth["merchant_name"] == "ACME SDN BHD" and truth["total_amount"] == "9.00"
+
+    schema = registry.load("receipt")
+    assert ev.same("transaction_date", schema, "25/12/2018", "2018-12-25")
+    assert ev.same("total_amount", schema, "1,240.55", 1240.55)
+    assert ev.same("merchant_name", schema, "ACME SDN. BHD.", "acme sdn bhd")
+    assert not ev.same("total_amount", schema, "9.00", None)
+    assert ev.same("items", schema, 2, [{}, {}]) and not ev.same("items", schema, 3, [{}, {}])
+
+    def result(extracted, final, flagged=False, failed=()):
+        return {"schema": schema, "fields": final, "needs_review": flagged,
+                "validation": {"failed": list(failed)},
+                "trace": [{"step": "extract", "fields": extracted}], "doc_type": "receipt"}
+
+    truth = {"merchant_name": "ACME", "total_amount": "9.00"}
+    fixed = ev.score_case(truth, result({"merchant_name": "ACME", "total_amount": 99.0},
+                                        {"merchant_name": "ACME", "total_amount": 9.0}), "receipt")
+    broke = ev.score_case(truth, result({"merchant_name": "ACME", "total_amount": 9.0},
+                                        {"merchant_name": "ACME", "total_amount": 99.0}, True, ["rule"]), "receipt")
+    s = ev.summarize([fixed, broke, {"error": "boom"}])
+    assert (s["verifier_fixed"], s["verifier_broke"], s["errors"]) == (1, 1, 1)
+    assert s["fields"]["total_amount"] == (2, 1, 1)
+    assert (s["wrong_docs"], s["wrong_flagged"], s["wrong_caught_by_rules"], s["right_docs"]) == (1, 1, 1, 1)
+    assert s["type_ok"] == "2/2"
+
+
 # --- end to end: needs Ollama -------------------------------------------------
 
 def test_end_to_end_invoice():
