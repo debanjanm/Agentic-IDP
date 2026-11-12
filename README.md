@@ -213,6 +213,14 @@ measure - how many reviewed jobs needed a correction and which fields.
   time. Drop `VERIFY_RETRIES` to 0 or skip verification if you need it faster.
 - `dpi` and `max_edge` in `app/doc.py` are the accuracy/latency knobs and want
   tuning against your actual documents.
+- Documents over 10 pages are refused with an error (`max_pages` in `app/doc.py`),
+  not truncated. Longer ones need splitting first.
+- A multi-document upload is split where the page type changes or a page reads
+  "Page 1 of N". Two same-type documents with no page numbering stay merged.
+- Text from OCR is labelled "may contain errors" in the prompts; only a PDF's own
+  text layer is called exact.
+- Numbers in corrections parse `1,240.55`, `1.240,55`, `1 240,55`, `(120.00)` and
+  `12%`. A lone dot is always a decimal point (`1.240` is 1.24).
 - Verification covers scalar fields; line items are extracted but not re-checked.
 - No bounding boxes or field-level provenance yet — the natural next feature.
 - A failed job retries once (`app/worker.py`'s `MAX_ATTEMPTS`), then its status
@@ -236,8 +244,7 @@ Deliberately not built. Each item says when it becomes worth building.
 - **Image quality checks**: blur, skew, rotation before OCR. Needed once phone
   photos arrive.
 - **File handling**: magic-byte type detection, a clear error for encrypted PDFs
-  (today they retry pointlessly), an error instead of silently truncating at
-  10 pages, Office/email/ZIP inputs.
+  (today they retry pointlessly), Office/email/ZIP inputs.
 - **Provenance**: which part of the page each value came from (bounding boxes).
 - **UI**: a batch upload's child documents aren't shown; line items can't be
   edited in review.

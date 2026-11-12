@@ -133,7 +133,7 @@ def classify(pages) -> dict:
         f"Choose exactly one: {', '.join(labels)}.\n"
         "Use 'unknown' if it matches none of them.\n"
         "confidence is 0.0-1.0. language is the document's main language, ISO 639-1.\n"
-        + _text_block(page.text)
+        + _text_block(page.text, _is_ocr([page]))
     )
     use_vision = len(page.text) < TEXT_CLASSIFY_MIN_CHARS
     model = llm.CLASSIFY_MODEL if use_vision else llm.TEXT_CLASSIFY_MODEL
@@ -170,7 +170,7 @@ def _extract_chunk(chunk, schema, total_pages) -> dict:
         "- Copy values exactly as they appear. Do not reformat except dates, which use YYYY-MM-DD.\n"
         "- Amounts are plain numbers: no currency symbols, no thousands separators.\n"
         "- If a field is not present in the document, return null. Never guess or invent a value.\n"
-        + _text_block(text)
+        + _text_block(text, _is_ocr(chunk))
     )
     return llm.chat(
         prompt,
@@ -198,9 +198,8 @@ def verify(pages, schema, fields):
     if not scalars:
         return fields, confidence, trace
 
-    chunk = pages[:MAX_IMAGES_PER_CALL]
     for attempt in range(VERIFY_RETRIES + 1):
-        report = _verify_once(chunk, scalars, schema)
+        report = _verify_all(pages, scalars, schema)
         trace.append({"step": "verify", "attempt": attempt + 1, "report": report})
 
         fixes = {}
@@ -235,6 +234,29 @@ def verify(pages, schema, fields):
     return fields, confidence, trace
 
 
+def _verify_all(pages, scalars, schema) -> dict:
+    """Verify against every page, MAX_IMAGES_PER_CALL at a time.
+
+    A verifier that sees pages 1-4 of 10 would "correct" a field that lives on
+    page 7 to null. So a field passes if any chunk confirms it; otherwise the
+    most confident non-null correction wins. Short documents are one call.
+    """
+    reports = [_verify_once(pages[i:i + MAX_IMAGES_PER_CALL], scalars, schema)
+               for i in range(0, len(pages), MAX_IMAGES_PER_CALL)]
+    if len(reports) == 1:
+        return reports[0]
+
+    def rank(item):  # confirmed beats corrected beats null-correction, then confidence
+        return (bool(item.get("ok")), item.get("correction") is not None, _clamp(item.get("confidence")))
+
+    out = {}
+    for name in scalars:
+        items = [r[name] for r in reports if isinstance(r.get(name), dict)]
+        if items:
+            out[name] = max(items, key=rank)
+    return out
+
+
 def _verify_once(chunk, scalars, schema) -> dict:
     text = "\n\n".join(f"--- page {p.number} ---\n{p.text}" for p in chunk if p.text)
     prompt = (
@@ -255,7 +277,7 @@ def _verify_once(chunk, scalars, schema) -> dict:
         "Set ok=false and give the right value as a string in correction when it is "
         "wrong; use correction null to mean the field should be null. Set confidence "
         "to how sure you are, and below 0.5 when the document is unclear.\n"
-        + _text_block(text)
+        + _text_block(text, _is_ocr(chunk))
     )
     out = llm.chat(
         prompt,
@@ -287,17 +309,39 @@ def _coerce(value, field_schema):
     if s.lower() in NULL_WORDS:
         return None
     if "number" in types or "integer" in types:
-        m = re.search(r"-?\d[\d,]*\.?\d*", s.replace(" ", ""))
-        if not m:
+        n = _number(s)
+        if n is None:
             return None
-        try:
-            n = float(m.group().replace(",", ""))
-            return int(n) if "integer" in types and n.is_integer() else n
-        except ValueError:
-            return None
+        return int(n) if "integer" in types and n.is_integer() else n
     if "boolean" in types:
         return s.lower() in ("true", "yes", "y", "1")
     return s
+
+
+def _number(s):
+    """Parse "1,240.55", "1.240,55", "1 240,55", "(120.00)", "12%", "EUR -42".
+
+    The last separator is the decimal point, unless it repeats ("1.234.567")
+    or is a lone comma before exactly three digits ("1,240"), which is thousands.
+    A lone dot is always a decimal point: "1.240" is 1.24, since the extraction
+    prompt asks for plain numbers and US style is the common case.
+    """
+    s = re.sub(r"[\s\u00a0\u202f']", "", s)
+    m = re.search(r"\d[\d.,]*\d|\d", s)
+    if not m:
+        return None
+    t = m.group()
+    neg = s[:m.start()].endswith("-") or (s.startswith("(") and s.endswith(")"))
+    last = max(t.rfind(","), t.rfind("."))
+    if last >= 0:
+        sep, head, frac = t[last], t[:last], t[last + 1:]
+        other = "." if sep == "," else ","
+        if sep in head or (sep == "," and len(frac) == 3 and other not in head):
+            t = t.replace(",", "").replace(".", "")
+        else:
+            t = head.replace(other, "") + "." + frac
+    n = float(t)
+    return -n if neg else n
 
 
 def _field_docs(schema, only=None) -> str:
@@ -320,13 +364,23 @@ def _field_docs(schema, only=None) -> str:
     return "Fields:\n" + "\n".join(lines) + "\n"
 
 
-def _text_block(text, limit=4000) -> str:
+def _text_block(text, ocr=False, limit=4000) -> str:
     if not text:
         return "\nThis page has no text layer - read it from the image."
+    if ocr:  # OCR misreads 0/O, 1/l, and drops characters - don't call it exact
+        return (
+            "\nOCR text of the page is below. It may contain recognition errors "
+            "(look-alike characters, dropped or merged characters), so check "
+            f"it against the image.\n<text>\n{text[:limit]}\n</text>"
+        )
     return (
         "\nThe document's embedded text layer is below. It is exact - prefer it over "
         f"reading characters off the image, but use the image for layout.\n<text>\n{text[:limit]}\n</text>"
     )
+
+
+def _is_ocr(pages) -> bool:
+    return any(p.source == "ocr" for p in pages)
 
 
 def _ctx(n_images, text) -> int:

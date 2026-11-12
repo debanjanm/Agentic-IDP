@@ -62,7 +62,19 @@ def validate_schema(schema) -> dict:
             "does not support. Use plain types and nullable unions like "
             '{"type": ["string", "null"]} instead.'
         )
+    for name, spec in schema["properties"].items():
+        _check_entity_hint(name, spec.get("x-entity") if isinstance(spec, dict) else None)
     return schema
+
+
+def _check_entity_hint(name, hint):
+    if hint is None:
+        return
+    ok = (isinstance(hint, dict) and isinstance(hint.get("type"), str) and hint["type"]
+          and isinstance(hint.get("key", ""), str) and isinstance(hint.get("strong", False), bool))
+    if not ok:
+        raise ValueError(f"property {name!r}: x-entity must look like "
+                         '{"type": "Vendor", "key": "primary_name", "strong": false}')
 
 
 def _find_unsupported(node, found=None) -> set:

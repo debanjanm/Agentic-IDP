@@ -25,16 +25,19 @@ class Page(NamedTuple):
 
 
 def load_pages(path, max_pages=10, dpi=150, max_edge=1400) -> list[Page]:
-    """Render up to max_pages pages, clamped so the longest edge <= max_edge px.
+    """Render every page, clamped so the longest edge <= max_edge px.
 
+    A document over max_pages is refused, not truncated: extracting from the
+    first 10 pages of 14 and calling it done loses data without a trace.
     dpi and max_edge are the accuracy/latency knobs: higher means the model
     reads small print better and takes proportionally longer.
     """
     pages = []
     with fitz.open(path) as doc:
+        if doc.page_count > max_pages:
+            raise ValueError(f"document has {doc.page_count} pages; the limit is {max_pages}. "
+                             "Split it into smaller files.")
         for i, page in enumerate(doc):
-            if i >= max_pages:
-                break
             png_bytes = _render(page, dpi, max_edge)
             text, source = page.get_text().strip(), "text-layer"
             if not text:

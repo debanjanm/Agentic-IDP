@@ -109,6 +109,14 @@ def test_coerce_handles_messy_corrections():
     assert pipeline._coerce("no digits here", num) is None
     assert pipeline._coerce("7", {"type": ["integer", "null"]}) == 7
     assert pipeline._coerce("INV-9", {"type": ["string", "null"]}) == "INV-9"
+    # European and accounting formats: the old regex read "1 240,55" as 124055
+    assert pipeline._coerce("1.240,55", num) == TOTAL
+    assert pipeline._coerce("1 240,55", num) == TOTAL
+    assert pipeline._coerce("1,240", num) == 1240          # lone comma + 3 digits = thousands
+    assert pipeline._coerce("12,5", num) == 12.5
+    assert pipeline._coerce("1,234,567", num) == 1234567
+    assert pipeline._coerce("(120.00)", num) == -120       # accounting negative
+    assert pipeline._coerce("12%", num) == 12
 
 
 def test_verify_applies_real_corrections_and_ignores_restated_values():
@@ -493,6 +501,82 @@ def test_loads_pdf_and_image_through_one_path():
         # a raw image has no PDF text layer, but app/ocr.py (PaddleOCR) fills
         # one in - this is what lets classify() skip vision for scans too
         assert INVOICE_NUMBER in doc.load_pages(png)[0].text
+
+
+def test_verify_sees_every_page_not_just_the_first_four():
+    """A field on page 7 must not be nulled because the verifier only saw 1-4."""
+    seen = []
+
+    def fake(chunk, scalars, schema):
+        seen.append([p.number for p in chunk])
+        on_this_chunk = 7 in [p.number for p in chunk]
+        return {"invoice_number": {"ok": on_this_chunk, "confidence": 0.9 if on_this_chunk else 0.3,
+                                   "correction": None}}
+
+    original = pipeline._verify_once
+    pipeline._verify_once = fake
+    try:
+        pages = [doc.Page(i, "", "") for i in range(1, 11)]
+        fields, conf, _ = pipeline.verify(pages, registry.load("invoice"), {"invoice_number": "INV-7"})
+    finally:
+        pipeline._verify_once = original
+
+    assert seen == [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10]], seen
+    assert fields["invoice_number"] == "INV-7" and conf["invoice_number"] == 0.9
+
+
+def test_load_pages_refuses_instead_of_truncating():
+    import fitz
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "long.pdf"
+        d = fitz.open()
+        for _ in range(4):
+            d.new_page().insert_text((72, 72), "text")
+        d.save(path)
+        d.close()
+        assert len(doc.load_pages(path, max_pages=4)) == 4
+        try:
+            doc.load_pages(path, max_pages=3)
+        except ValueError as e:
+            assert "4 pages" in str(e)
+        else:
+            raise AssertionError("silently truncated a 4-page document at 3")
+
+
+def test_segment_splits_same_type_documents_at_page_one_of_n():
+    pages = [doc.Page(1, "", "Page 1 of 2"), doc.Page(2, "", "Page 2 of 2"),
+             doc.Page(3, "", "Page 1 of 1"), doc.Page(4, "", "no numbering")]
+    original = pipeline.classify
+    pipeline.classify = lambda p: {"doc_type": "invoice", "confidence": 0.9, "reasoning": "", "language": "en"}
+    try:
+        segments = segment.split(pages)
+    finally:
+        pipeline.classify = original
+    assert [[p.number for p in s.pages] for s in segments] == [[1, 2], [3, 4]]
+
+
+def test_only_text_layer_text_is_called_exact():
+    assert "exact" in pipeline._text_block("INV-1")
+    ocr_text = pipeline._text_block("INV-1", ocr=True)
+    assert "exact" not in ocr_text and "errors" in ocr_text
+    assert pipeline._is_ocr([doc.Page(1, "", "t", "ocr")]) and not pipeline._is_ocr([doc.Page(1, "", "t")])
+
+
+def test_registry_rejects_malformed_x_entity_hints():
+    def schema(hint):
+        return {"type": "object", "properties": {"v": {"type": "string", "x-entity": hint}}}
+
+    for bad in ["Vendor", {"key": "primary_name"}, {"type": 3}, {"type": "Vendor", "strong": "yes"}]:
+        try:
+            registry.validate_schema(schema(bad))
+        except ValueError as e:
+            assert "x-entity" in str(e)
+        else:
+            raise AssertionError(f"accepted x-entity {bad!r}")
+    registry.validate_schema(schema({"type": "Vendor", "key": "tax_id", "strong": True}))
+    for t in registry.doc_types():  # the seed schemas pass their own validator
+        registry.validate_schema(registry.load(t))
 
 
 # --- end to end: needs Ollama -------------------------------------------------

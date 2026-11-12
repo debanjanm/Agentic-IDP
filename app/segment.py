@@ -2,15 +2,22 @@
 
 Classifies every page (cheap: one image, small context) and groups
 consecutive pages predicted as the same doc_type into one sub-document. A
-type change is the boundary - this is a heuristic, not a layout model, and it
-works because a scanned batch is a run of pages per document, not an
-interleaving of them.
+type change is the boundary, as is a page that reads "Page 1 of N". This is a
+heuristic, not a layout model: two same-type documents with no page numbering
+merge into one. It works because a scanned batch is a run of pages per
+document, not an interleaving of them.
 """
 
+import re
 from typing import NamedTuple
 
 from . import pipeline
 from .doc import Page
+
+
+# "Page 1 of 3": a page that says it is the first of a document starts a new one,
+# even when the previous page was the same type (two invoices back to back).
+FIRST_PAGE = re.compile(r"\bpage\s+1\s+of\s+\d+\b", re.I)
 
 
 class Segment(NamedTuple):
@@ -30,7 +37,7 @@ def split(pages: list[Page]) -> list[Segment]:
     segments = []
     group, group_cls = [pages[0]], per_page[0]
     for page, cls in zip(pages[1:], per_page[1:]):
-        if cls["doc_type"] == group_cls["doc_type"]:
+        if cls["doc_type"] == group_cls["doc_type"] and not FIRST_PAGE.search(page.text):
             group.append(page)
         else:
             segments.append(Segment(group, group_cls))
