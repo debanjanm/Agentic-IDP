@@ -1,0 +1,134 @@
+{
+  "title": "Invoice",
+  "description": "A commercial invoice or bill requesting payment.",
+  "x-checks": [
+    "subtotal + tax_amount = total_amount",
+    "sum(line_items.amount) = subtotal",
+    "invoice_date <= due_date"
+  ],
+  "type": "object",
+  "properties": {
+    "invoice_number": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "invoice_date": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "ISO 8601, YYYY-MM-DD"
+    },
+    "due_date": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "ISO 8601, YYYY-MM-DD"
+    },
+    "vendor_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "the seller who issued this invoice and receives payment, usually in the letterhead at the top",
+      "x-entity": { "type": "Vendor", "key": "primary_name" }
+    },
+    "vendor_tax_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "the seller's VAT or tax registration number",
+      "x-entity": { "type": "Vendor", "key": "tax_id", "strong": true }
+    },
+    "customer_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "the buyer being billed, usually after 'Bill to' or 'Invoice to'",
+      "x-entity": { "type": "Customer", "key": "primary_name" }
+    },
+    "currency": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "ISO 4217 code, e.g. USD"
+    },
+    "subtotal": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "total before tax"
+    },
+    "tax_amount": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "total_amount": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "final amount payable including tax"
+    },
+    "line_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantity": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "unit_price": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "amount": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "description",
+          "quantity",
+          "unit_price",
+          "amount"
+        ]
+      }
+    }
+  },
+  "required": [
+    "invoice_number",
+    "invoice_date",
+    "due_date",
+    "vendor_name",
+    "vendor_tax_id",
+    "customer_name",
+    "currency",
+    "subtotal",
+    "tax_amount",
+    "total_amount",
+    "line_items"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "title": "Generic Document",
+  "description": "Fallback for any document that doesn't match a registered type. Captures whatever key facts are present as loose key-value pairs instead of aborting.",
+  "type": "object",
+  "properties": {
+    "summary": { "type": ["string", "null"], "description": "one or two sentences describing what this document is" },
+    "fields": {
+      "type": "array",
+      "description": "every distinct labeled fact on the page, as key/value pairs - dates, names, numbers, headings with a value",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": { "type": ["string", "null"], "description": "the label as printed, e.g. 'Reference No.'" },
+          "value": { "type": ["string", "null"] }
+        },
+        "required": ["key", "value"]
+      }
+    }
+  },
+  "required": ["summary", "fields"]
+}

@@ -1,0 +1,113 @@
+{
+  "title": "Receipt",
+  "description": "A proof-of-purchase receipt from a shop, restaurant or service.",
+  "x-checks": [
+    "subtotal + tax_amount + tip_amount = total_amount"
+  ],
+  "type": "object",
+  "properties": {
+    "merchant_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "the shop or business that issued this receipt",
+      "x-entity": { "type": "Vendor", "key": "primary_name" }
+    },
+    "transaction_date": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "ISO 8601, YYYY-MM-DD"
+    },
+    "transaction_time": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "HH:MM, 24-hour"
+    },
+    "currency": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "ISO 4217 code"
+    },
+    "subtotal": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "tax_amount": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "tip_amount": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "total_amount": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "final amount paid including tax and tip"
+    },
+    "payment_method": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantity": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "price": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "quantity",
+          "price"
+        ]
+      }
+    }
+  },
+  "required": [
+    "merchant_name",
+    "transaction_date",
+    "transaction_time",
+    "currency",
+    "subtotal",
+    "tax_amount",
+    "tip_amount",
+    "total_amount",
+    "payment_method",
+    "items"
+  ]
+}

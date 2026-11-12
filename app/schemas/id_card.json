@@ -1,0 +1,22 @@
+{
+  "title": "ID Document",
+  "description": "A government identity document: passport, national ID or driving licence.",
+  "x-checks": [
+    "date_of_birth < issue_date",
+    "issue_date <= expiry_date"
+  ],
+  "type": "object",
+  "properties": {
+    "document_type": { "type": ["string", "null"], "description": "passport, national_id, drivers_licence" },
+    "document_number": { "type": ["string", "null"] },
+    "full_name": { "type": ["string", "null"] },
+    "date_of_birth": { "type": ["string", "null"], "description": "ISO 8601, YYYY-MM-DD" },
+    "sex": { "type": ["string", "null"] },
+    "nationality": { "type": ["string", "null"] },
+    "issuing_country": { "type": ["string", "null"] },
+    "issue_date": { "type": ["string", "null"], "description": "ISO 8601, YYYY-MM-DD" },
+    "expiry_date": { "type": ["string", "null"], "description": "ISO 8601, YYYY-MM-DD" }
+  },
+  "required": ["document_type", "document_number", "full_name", "date_of_birth", "sex",
+               "nationality", "issuing_country", "issue_date", "expiry_date"]
+}

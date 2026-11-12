@@ -1,0 +1,10 @@
+# Neobrutalist palette. Borders and hard shadows live in ui.py (NEO_CSS) -
+# a theme file can't express those. The page itself is painted yellow by that
+# CSS; keeping backgroundColor white here means dataframes render on white.
+[theme]
+base = "light"
+primaryColor = "#D9779F"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#FBF5DD"
+textColor = "#171717"
+font = "sans serif"
