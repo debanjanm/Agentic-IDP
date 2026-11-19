@@ -28,10 +28,23 @@ The verify pass is a second model call that re-reads the page with the extracted
 JSON in hand and can overrule it. At 3B parameters that is the main defense
 against a confident wrong read.
 
+## Layout
+
+```
+backend/app/   API, worker, database, entity resolution, review (package `app`)
+ai/            document pipeline: OCR, classify, extract, verify, validate, schemas (package `ai`)
+frontend/      Streamlit UI (ui.py, .streamlit/ theme)
+scripts/       backend.sh, frontend.sh, eval.py
+tests/         test_pipeline.py
+assets/        sample documents + labels (assets/samples)
+artifacts/     generated output such as eval reports (git-ignored)
+data/          runtime database and uploads (git-ignored)
+```
+
 ## Setup
 
 Needs Python 3.12 and [Ollama](https://ollama.com). Nothing else to install by
-hand: `./backend.sh` and `./frontend.sh` (below) each create their own virtualenv
+hand: `./scripts/backend.sh` and `./scripts/frontend.sh` (below) each create their own virtualenv
 under `.venv/` on first run and install what they need. Prefer your own
 environment? The dependency lists are at the top of each script.
 
@@ -59,17 +72,17 @@ help with.
 Two scripts, one terminal each:
 
 ```bash
-./backend.sh
+./scripts/backend.sh
 ```
 
 ```bash
-./frontend.sh
+./scripts/frontend.sh
 ```
 
-`./backend.sh` runs the API (`http://127.0.0.1:8000`) and the worker together
+`./scripts/backend.sh` runs the API (`http://127.0.0.1:8000`) and the worker together
 and stops both on Ctrl-C. The API only accepts uploads and reports status;
-`app/worker.py` does the actual work as its own process, so a job survives
-retries and an API restart. `./frontend.sh` runs the UI at
+`backend/app/worker.py` does the actual work as its own process, so a job survives
+retries and an API restart. `./scripts/frontend.sh` runs the UI at
 `http://localhost:8501` and needs none of the backend's heavy dependencies
 (PaddlePaddle, PyMuPDF), so its environment is a third the size.
 
@@ -82,7 +95,7 @@ the UI at a backend elsewhere.
 Or skip the web layer entirely:
 
 ```bash
-.venv/backend/bin/python -m app.pipeline path/to/invoice.pdf
+PYTHONPATH=. .venv/backend/bin/python -m ai.pipeline assets/samples/invoice.pdf
 ```
 
 ## API
@@ -111,7 +124,7 @@ curl -F file=@doc.pdf -F doc_type=receipt -F schema="$(cat my_schema.json)" http
 
 ## Schemas
 
-`app/schemas/*.json` — one JSON Schema per file, filename is the document type.
+`ai/schemas/*.json` — one JSON Schema per file, filename is the document type.
 Ships with invoice, receipt, bank_statement and id_card. Drop in a new file and it
 is immediately both a classifier label and an extraction target; no code change.
 
@@ -150,7 +163,7 @@ re-runs the rules.
 A property can carry an `"x-entity": {"type": "Vendor", "key": "primary_name"}`
 hint — properties sharing a `type` become one entity group (e.g. `vendor_name` +
 `vendor_tax_id` are both part of the `Vendor` group). After verification,
-`app/resolve.py` matches each group against existing golden records (fuzzy name
+`backend/app/resolve.py` matches each group against existing golden records (fuzzy name
 match via stdlib `difflib`, or an exact match on any field marked `"strong":
 true`, which overrides name similarity entirely — a shared tax ID or account
 number means "same entity" even if the printed name differs) and either attaches
@@ -174,7 +187,7 @@ hold the golden records and their provenance. A schema with no `x-entity` hints
 ## Tests
 
 ```bash
-.venv/backend/bin/python test_pipeline.py
+.venv/backend/bin/python tests/test_pipeline.py
 ```
 
 Offline tests always run. The end-to-end test builds a synthetic invoice PDF,
@@ -183,21 +196,22 @@ It skips with a clear message when Ollama isn't up.
 
 ### Accuracy on public data
 
-`eval.py` scores the pipeline against labelled documents: exact-match per field
+`scripts/eval.py` scores the pipeline against labelled documents: exact-match per field
 before and after the verify pass, how often a wrong document was flagged for
 review, and how often a correct one was flagged anyway.
 
 ```bash
-.venv/backend/bin/python eval.py path/to/sroie_entities -n 20   # images + X.txt labels
+.venv/backend/bin/python scripts/eval.py path/to/sroie_entities -n 20   # images + X.txt labels
 .venv/backend/bin/pip install datasets pillow                   # once, for CORD
-.venv/backend/bin/python eval.py --cord 20 --known-type
+.venv/backend/bin/python scripts/eval.py --cord 20 --known-type
+.venv/backend/bin/python scripts/eval.py assets/samples --doc-type invoice --known-type   # 1 sample, ~1 min
 ```
 
 SROIE maps to `merchant_name`, `transaction_date`, `total_amount`; CORD to
 subtotal, tax, total and item count. Both are receipts; there is no public
 bank-statement set, so those schemas are only measured on your own documents
 (a folder of files each with an `X.json` label in schema field names).
-A page takes ~1-3 minutes, so keep `-n` small.
+A page takes ~1-3 minutes, so keep `-n` small. Reports land in `artifacts/`.
 
 ## Review and quality
 
@@ -229,9 +243,9 @@ measure - how many reviewed jobs needed a correction and which fields.
   three model calls (classify ≈45s, extract ≈60s, verify ≈85s), each re-reading
   the page image. Jobs are serialized on purpose: one model, one document at a
   time. Drop `VERIFY_RETRIES` to 0 or skip verification if you need it faster.
-- `dpi` and `max_edge` in `app/doc.py` are the accuracy/latency knobs and want
+- `dpi` and `max_edge` in `ai/doc.py` are the accuracy/latency knobs and want
   tuning against your actual documents.
-- Documents over 10 pages are refused with an error (`max_pages` in `app/doc.py`),
+- Documents over 10 pages are refused with an error (`max_pages` in `ai/doc.py`),
   not truncated. Longer ones need splitting first.
 - A multi-document upload is split where the page type changes or a page reads
   "Page 1 of N". Two same-type documents with no page numbering stay merged.
@@ -241,7 +255,7 @@ measure - how many reviewed jobs needed a correction and which fields.
   `12%`. A lone dot is always a decimal point (`1.240` is 1.24).
 - Verification covers scalar fields; line items are extracted but not re-checked.
 - No bounding boxes or field-level provenance yet — the natural next feature.
-- A failed job retries once (`app/worker.py`'s `MAX_ATTEMPTS`), then its status
+- A failed job retries once (`backend/app/worker.py`'s `MAX_ATTEMPTS`), then its status
   becomes `failed` with the error message attached — it does not retry forever.
 - The worker process itself crashing (not just the API) can strand a job at
   `status="running"` with nothing to resume it — there's no lease/heartbeat.

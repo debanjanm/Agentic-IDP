@@ -2,13 +2,14 @@
 # Backend: sets up its own virtualenv on first run, then runs the API and the
 # worker together. Ctrl-C stops both.
 #
-#   ./backend.sh                    API on http://127.0.0.1:8000
-#   PORT=9000 ./backend.sh          another port
-#   PYTHON=/path/to/python3.12 ./backend.sh
+#   ./scripts/backend.sh            API on http://127.0.0.1:8000
+#   PORT=9000 ./scripts/backend.sh  another port
+#   PYTHON=/path/to/python3.12 ./scripts/backend.sh
 #
 # Needs Ollama running with qwen2.5vl:3b and qwen3:4b pulled (see README).
 set -euo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."  # repo root, so .venv/ and data/ live there
+export PYTHONPATH=.:backend  # packages: ai (repo root) and app (backend/)
 
 VENV=.venv/backend
 HOST=${HOST:-127.0.0.1}
@@ -36,7 +37,7 @@ fi
 # The dependency list above is the source of truth: reinstall only when this
 # script is newer than the last successful install.
 STAMP=$VENV/.deps-installed
-if [ ! -f "$STAMP" ] || [ "$(basename "$0")" -nt "$STAMP" ]; then
+if [ ! -f "$STAMP" ] || [ scripts/backend.sh -nt "$STAMP" ]; then
   echo "Installing backend dependencies (first run downloads PaddlePaddle, a few minutes)..."
   "$VENV/bin/pip" install -q --upgrade pip
   "$VENV/bin/pip" install -q "${DEPS[@]}"
@@ -44,11 +45,11 @@ if [ ! -f "$STAMP" ] || [ "$(basename "$0")" -nt "$STAMP" ]; then
 fi
 
 # Say now, not mid-job, if the model server isn't ready.
-"$VENV/bin/python" -c 'from app import llm; ok, why = llm.available(); not ok and print("warning:", why)' >&2 || true
+"$VENV/bin/python" -c 'from ai import llm; ok, why = llm.available(); not ok and print("warning:", why)' >&2 || true
 
 "$VENV/bin/python" -m app.worker &
 WORKER=$!
-"$VENV/bin/python" -m uvicorn app.main:app --host "$HOST" --port "$PORT" &
+"$VENV/bin/python" -m uvicorn app.main:app --app-dir backend --host "$HOST" --port "$PORT" &
 API=$!
 
 # Both children belong to this script: however it ends (Ctrl-C, kill, the API

@@ -1,6 +1,6 @@
 """One end-to-end check plus the pure-logic bits.
 
-    python test_pipeline.py        # or: pytest test_pipeline.py
+    .venv/backend/bin/python tests/test_pipeline.py   # or: pytest tests/
 
 The offline tests always run. The end-to-end test needs Ollama up with the
 vision model pulled, and skips with a clear message when it isn't.
@@ -19,9 +19,13 @@ from pathlib import Path
 # a throwaway directory.
 os.environ.setdefault("IDP_DATA_DIR", tempfile.mkdtemp(prefix="idp_test_"))
 
-import fitz
+ROOT = Path(__file__).resolve().parents[1]
+sys.path[:0] = [str(ROOT), str(ROOT / "backend"), str(ROOT / "scripts")]  # ai, app, eval.py
 
-from app import doc, llm, pipeline, registry, resolve, review, segment, validate
+import fitz  # noqa: E402
+
+from ai import doc, llm, pipeline, registry, segment, validate
+from app import resolve, review
 
 INVOICE_NUMBER = "INV-2024-0093"
 TOTAL = 1240.55
@@ -498,7 +502,7 @@ def test_loads_pdf_and_image_through_one_path():
 
         png = Path(tmp) / "inv.png"
         png.write_bytes(doc.render_png(pdf, 1))
-        # a raw image has no PDF text layer, but app/ocr.py (PaddleOCR) fills
+        # a raw image has no PDF text layer, but ai/ocr.py (PaddleOCR) fills
         # one in - this is what lets classify() skip vision for scans too
         assert INVOICE_NUMBER in doc.load_pages(png)[0].text
 

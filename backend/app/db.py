@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-DATA_DIR = Path(os.environ.get("IDP_DATA_DIR", Path(__file__).parent.parent / "data"))
+DATA_DIR = Path(os.environ.get("IDP_DATA_DIR", Path(__file__).resolve().parents[2] / "data"))
 UPLOAD_DIR = DATA_DIR / "uploads"
 DB_PATH = DATA_DIR / "idp.db"
 
@@ -167,7 +167,7 @@ def next_queued():
 
 
 def children(parent_job_id):
-    """Sub-document jobs a batch upload split into (app/segment.py). Empty for a normal job."""
+    """Sub-document jobs a batch upload split into (ai/segment.py). Empty for a normal job."""
     rows = connect().execute(
         "SELECT * FROM jobs WHERE parent_job_id=? ORDER BY created_at", (parent_job_id,)
     ).fetchall()

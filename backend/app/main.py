@@ -9,7 +9,9 @@ from pathlib import Path
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
-from . import db, doc, llm, registry, review
+from ai import doc, llm, registry
+
+from . import db, review
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 CHUNK = 1 << 20

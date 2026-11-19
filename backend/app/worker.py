@@ -13,7 +13,9 @@ rows if that actually happens; it's not worth the complexity pre-emptively.
 import json
 import time
 
-from . import db, doc, pipeline, resolve, segment
+from ai import doc, pipeline, segment
+
+from . import db, resolve
 
 POLL_SECONDS = 2
 MAX_ATTEMPTS = 2  # total tries before a job is marked failed

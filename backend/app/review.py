@@ -12,7 +12,9 @@ import json
 from collections import Counter
 from statistics import mean
 
-from . import db, pipeline, registry, resolve, validate
+from ai import pipeline, registry, validate
+
+from . import db, resolve
 
 
 class ReviewError(ValueError):

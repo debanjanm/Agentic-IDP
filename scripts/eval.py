@@ -1,7 +1,8 @@
 """Score the pipeline against labelled documents.
 
-    .venv/backend/bin/python eval.py DIR -n 20        # your own labelled folder / SROIE
-    .venv/backend/bin/python eval.py --cord 20        # CORD v2 receipts from HuggingFace
+    .venv/backend/bin/python scripts/eval.py DIR -n 20   # your own labelled folder / SROIE
+    .venv/backend/bin/python scripts/eval.py --cord 20   # CORD v2 receipts from HuggingFace
+    .venv/backend/bin/python scripts/eval.py assets/samples --doc-type invoice --known-type
 
 DIR holds documents (pdf/png/jpg/tif) each next to a label file of the same name,
 `X.json` or `X.txt`, containing a JSON object. Keys are our schema's field names;
@@ -15,6 +16,7 @@ CORD labels no merchant or date, so it scores subtotal, tax, total and item coun
 Per field it reports exact-match before the verify pass and after it, so the
 verifier's net effect is visible (fixed vs broke). It also reports how often a
 wrong document was flagged for review, and how often a correct one was flagged.
+Per-document results are saved to artifacts/eval-<time>.json (or --out).
 A one-page job is ~3 minutes on an M2/16GB: keep -n small.
 """
 
@@ -27,8 +29,11 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from app import llm, pipeline, registry
-from app.doc import SUPPORTED_EXTS
+ROOT = Path(__file__).resolve().parents[1]
+sys.path[:0] = [str(ROOT), str(ROOT / "backend")]
+
+from ai import llm, pipeline, registry  # noqa: E402
+from ai.doc import SUPPORTED_EXTS  # noqa: E402
 
 SROIE_KEYS = {"company": "merchant_name", "date": "transaction_date", "total": "total_amount"}
 DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d.%m.%Y", "%d/%m/%y", "%d-%m-%y",
@@ -147,7 +152,7 @@ def main() -> None:
     ap.add_argument("-n", type=int, default=20, help="documents to run from FOLDER (default 20)")
     ap.add_argument("--doc-type", default="receipt", help="what the documents are (default receipt)")
     ap.add_argument("--known-type", action="store_true", help="skip classification, saves ~45s each")
-    ap.add_argument("--out", help="also write the per-document results to this JSON file")
+    ap.add_argument("--out", help="write per-document results here (default artifacts/eval-<time>.json)")
     args = ap.parse_args()
     if bool(args.folder) == bool(args.cord):
         ap.error("give either FOLDER or --cord N")
@@ -172,8 +177,10 @@ def main() -> None:
             hit = "ERROR" if "error" in row else f"{sum(a for _, a in row['rows'].values())}/{len(row['rows'])} right"
             print(f"[{i}/{len(cases)}] {path.name}: {hit} ({time.time() - t0:.0f}s)", flush=True)
     show(summarize(results))
-    if args.out:
-        Path(args.out).write_text(json.dumps(results, indent=2))
+    out = Path(args.out) if args.out else ROOT / "artifacts" / time.strftime("eval-%Y%m%d-%H%M%S.json")
+    out.parent.mkdir(exist_ok=True)
+    out.write_text(json.dumps(results, indent=2))
+    print(f"results: {out}")
 
 
 if __name__ == "__main__":

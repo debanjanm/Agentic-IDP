@@ -3,13 +3,14 @@
 # It only talks to the backend over HTTP, so it needs none of the backend's
 # heavy dependencies (PaddlePaddle, PyMuPDF).
 #
-#   ./frontend.sh                           UI on http://localhost:8501
-#   IDP_API=http://host:9000 ./frontend.sh  backend somewhere else
-#   PORT=8600 ./frontend.sh
+#   ./scripts/frontend.sh                           UI on http://localhost:8501
+#   IDP_API=http://host:9000 ./scripts/frontend.sh  backend somewhere else
+#   PORT=8600 ./scripts/frontend.sh
 set -euo pipefail
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."  # repo root
+ROOT=$PWD
 
-VENV=.venv/frontend
+VENV=$ROOT/.venv/frontend
 PORT=${PORT:-8501}
 export IDP_API=${IDP_API:-http://localhost:8000}
 
@@ -30,7 +31,7 @@ if [ ! -d "$VENV" ]; then
 fi
 
 STAMP=$VENV/.deps-installed
-if [ ! -f "$STAMP" ] || [ "$(basename "$0")" -nt "$STAMP" ]; then
+if [ ! -f "$STAMP" ] || [ scripts/frontend.sh -nt "$STAMP" ]; then
   echo "Installing frontend dependencies..."
   "$VENV/bin/pip" install -q --upgrade pip
   "$VENV/bin/pip" install -q "${DEPS[@]}"
@@ -38,7 +39,8 @@ if [ ! -f "$STAMP" ] || [ "$(basename "$0")" -nt "$STAMP" ]; then
 fi
 
 curl -sf "$IDP_API/health" >/dev/null 2>&1 \
-  || echo "warning: backend not reachable at $IDP_API - start ./backend.sh (the UI will say so too)" >&2
+  || echo "warning: backend not reachable at $IDP_API - start ./scripts/backend.sh (the UI will say so too)" >&2
 
 echo "UI: http://localhost:$PORT  (backend: $IDP_API)"
+cd frontend  # Streamlit reads .streamlit/config.toml from here
 exec "$VENV/bin/streamlit" run ui.py --server.port "$PORT"

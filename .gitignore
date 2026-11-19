@@ -221,3 +221,7 @@ __marimo__/
 data/
 
 .DS_Store
+
+# eval reports and other generated output
+artifacts/*
+!artifacts/.gitkeep

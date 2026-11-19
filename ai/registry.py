@@ -1,4 +1,4 @@
-"""The schema registry: doc_type -> JSON Schema, loaded from app/schemas/*.json.
+"""The schema registry: doc_type -> JSON Schema, loaded from ai/schemas/*.json.
 
 Does double duty - the filenames define the classifier's label set, and the
 schema itself constrains extraction.
