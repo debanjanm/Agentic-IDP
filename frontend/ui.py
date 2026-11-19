@@ -420,7 +420,9 @@ if job_id:
         a.metric("Document type", job["doc_type"] or "-")
         b.metric("Classifier confidence", f"{(job['confidence'] or 0):.0%}")
         c.metric("Pages", job["pages"] or "-")
-        why = (result.get("low_confidence_fields") or []) + [
+        sig = result.get("confidence_signals") or {}
+        why = [f"{f} ({', '.join(w.replace('_', ' ') for w in sig[f])})" if f in sig else f
+               for f in result.get("low_confidence_fields") or []] + [
             f"check failed: {f['rule']}" for f in (result.get("validation") or {}).get("failed", [])]
         if job.get("reviewed_at"):
             fixed = corrected_fields(job)

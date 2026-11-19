@@ -2,6 +2,21 @@
 
 Dates are commit dates. Newest first.
 
+## Unreleased
+
+### Added
+- Evidence-based confidence signals. A field is capped at 0.4 (below the 0.6
+  review threshold) when the verifier overruled the first extraction
+  (`verifier_overruled`) or its value is in none of the page text (`not_on_page`,
+  new `ai/ground.py`). Results carry `confidence_signals`; the review queue says
+  why a field was flagged.
+- `scripts/eval.py` prints how often a field is wrong when each signal fires
+  versus when none does.
+
+### Changed
+- Fields can now be flagged for review even when the verifier was confident.
+  Expect a higher review rate than before.
+
 ## 2026-11-19
 
 ### Changed
@@ -65,5 +80,5 @@ Dates are commit dates. Newest first.
 ## Not yet built
 
 Tracked in the README backlog: atomic job claiming, a lease for stranded jobs,
-graduated review, bounding-box provenance, image quality checks, and a
-confidence signal based on disagreement between extraction passes.
+graduated review, bounding-box provenance, image quality checks, and an
+independent second extraction pass as a further confidence signal.

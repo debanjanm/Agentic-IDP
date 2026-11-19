@@ -8,12 +8,15 @@ import json
 import re
 import time
 
-from . import doc, llm, registry, validate
+from . import doc, ground, llm, registry, validate
 
 MAX_IMAGES_PER_CALL = 4  # a 3B VLM on 16GB loses the thread past ~4 pages
 CLASSIFY_MIN_CONFIDENCE = 0.6
 TEXT_CLASSIFY_MIN_CHARS = 200  # below this, trust the image over sparse/noisy text
 FIELD_MIN_CONFIDENCE = 0.6
+# A field with a warning sign is capped here, below FIELD_MIN_CONFIDENCE, so it always
+# goes to review whatever confidence the verifier claimed for it.
+SIGNAL_CAP = 0.4
 VERIFY_RETRIES = 1
 NULL_WORDS = ("", "null", "none", "n/a", "not present")  # what a typed value means "empty"
 
@@ -85,12 +88,17 @@ def run_pages(pages, doc_type=None, schema=None, cls=None, on_step=None) -> dict
 
     note("extracting")
     t0 = time.time()
-    fields = extract(pages, schema)
-    trace.append({"step": "extract", "seconds": round(time.time() - t0, 1), "fields": dict(fields)})
+    extracted = extract(pages, schema)
+    trace.append({"step": "extract", "seconds": round(time.time() - t0, 1), "fields": dict(extracted)})
 
     note("verifying")
-    fields, confidence, vtrace = verify(pages, schema, fields)
+    fields, confidence, vtrace = verify(pages, schema, extracted)
     trace.extend(vtrace)
+    signals = _signals(pages, extracted, fields, confidence)
+    for name in signals:
+        confidence[name] = min(confidence[name], SIGNAL_CAP)
+    if signals:
+        trace.append({"step": "signals", "fields": signals})
 
     note("validating")
     checks = validate.check(schema, fields)
@@ -105,12 +113,34 @@ def run_pages(pages, doc_type=None, schema=None, cls=None, on_step=None) -> dict
         "field_confidence": confidence,
         "needs_review": bool(low) or bool(checks["failed"]) or cls["confidence"] < CLASSIFY_MIN_CONFIDENCE,
         "low_confidence_fields": low,
+        "confidence_signals": signals,
         "validation": checks,
         "pages": len(pages),
         "text_source": "+".join(sorted({p.source for p in pages})),
         "schema": schema,  # the caller (worker.py) needs this for entity resolution
         "trace": trace,
     }
+
+
+def _signals(pages, extracted, fields, confidence) -> dict:
+    """{field: [why it is doubtful]} from evidence other than the model's own claim.
+
+    verifier_overruled: the extract pass and the verify pass disagreed - two looks
+    at the same page gave different answers. not_on_page: the final value appears
+    nowhere in the page text. A verifier's self-reported confidence collapses toward
+    "sure" on small models, so these are what the confidence is capped by.
+    """
+    text = "\n".join(p.text for p in pages)
+    out = {}
+    for name in confidence:
+        why = []
+        if extracted.get(name) != fields.get(name):
+            why.append("verifier_overruled")
+        if ground.grounded(fields.get(name), text) is False:
+            why.append("not_on_page")
+        if why:
+            out[name] = why
+    return out
 
 
 def classify(pages) -> dict:

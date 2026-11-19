@@ -28,6 +28,11 @@ The verify pass is a second model call that re-reads the page with the extracted
 JSON in hand and can overrule it. At 3B parameters that is the main defense
 against a confident wrong read.
 
+A model's own "I'm 90% sure" is a weak signal, so field confidence is also capped
+by evidence that does not come from the model: the verifier overruling the first
+extraction, or the value appearing nowhere in the page text (see
+[Confidence](#confidence)).
+
 ## Layout
 
 ```
@@ -216,6 +221,23 @@ bank-statement set, so those schemas are only measured on your own documents
 (a folder of files each with an `X.json` label in schema field names).
 A page takes ~1-3 minutes, so keep `-n` small. Reports land in `artifacts/`.
 
+## Confidence
+
+The verifier reports a confidence per field, but small models say "sure" about
+nearly everything. Two warning signs that do not depend on that number cap a
+field at 0.4, below the 0.6 review threshold, so it always goes to the review queue:
+
+- `verifier_overruled` - the extract pass and the verify pass disagreed.
+- `not_on_page` - the final value is in none of the page text. Numbers are looked
+  for in every common notation (`1,240.55`, `1.240,55`, `1 240,55`), dates in
+  written forms (`14 March 2024`), other values by their words. Not checked when
+  the page has no text, the value is null, or a string is under 4 characters.
+
+The job result lists them as `confidence_signals`, and the review queue says why
+a field was flagged. `scripts/eval.py` prints how often a field is wrong when each
+sign fires versus when none does, which is how to judge whether a sign is worth
+its review load.
+
 ## Review and quality
 
 The UI has three views: **Process**, **Review queue** and **Quality**. A job
@@ -256,6 +278,8 @@ measure - how many reviewed jobs needed a correction and which fields.
   text layer is called exact.
 - Numbers in corrections parse `1,240.55`, `1.240,55`, `1 240,55`, `(120.00)` and
   `12%`. A lone dot is always a decimal point (`1.240` is 1.24).
+- `not_on_page` needs page text, so on a page OCR could not read it stays silent.
+  A value the model correctly derives (not printed as such) can trip it.
 - Verification covers scalar fields; line items are extracted but not re-checked.
 - No bounding boxes or field-level provenance yet — the natural next feature.
 - A failed job retries once (`backend/app/worker.py`'s `MAX_ATTEMPTS`), then its status

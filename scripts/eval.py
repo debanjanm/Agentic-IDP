@@ -105,7 +105,7 @@ def score_case(truth, result, expected_type=None) -> dict:
     extracted = next((t["fields"] for t in result["trace"] if t["step"] == "extract"), {})
     rows = {f: (same(f, schema, t, extracted.get(f)), same(f, schema, t, result["fields"].get(f)))
             for f, t in truth.items()}
-    return {"rows": rows, "flagged": result["needs_review"],
+    return {"rows": rows, "signals": result.get("confidence_signals", {}), "flagged": result["needs_review"],
             "rules_failed": bool(result["validation"]["failed"]),
             "type_ok": None if expected_type is None else result["doc_type"] == expected_type}
 
@@ -117,12 +117,19 @@ def summarize(cases) -> dict:
         for f, (before, after) in c["rows"].items():
             n, b, a = fields.get(f, (0, 0, 0))
             fields[f] = (n + 1, b + before, a + after)
+    # how often a field is wrong when each warning sign fires, and when none does
+    signals = {}
+    for c in ok:
+        for f, (_, after) in c["rows"].items():
+            for name in c["signals"].get(f) or ["(no signal)"]:
+                n, bad = signals.get(name, (0, 0))
+                signals[name] = (n + 1, bad + (not after))
     wrong = [c for c in ok if not all(a for _, a in c["rows"].values())]
     right = [c for c in ok if c not in wrong]
     typed = [c for c in ok if c["type_ok"] is not None]
     return {
         "documents": len(cases), "errors": len(cases) - len(ok),
-        "fields": fields,
+        "fields": fields, "signals": signals,
         "verifier_fixed": sum(1 for c in ok for b, a in c["rows"].values() if a and not b),
         "verifier_broke": sum(1 for c in ok for b, a in c["rows"].values() if b and not a),
         "wrong_docs": len(wrong), "wrong_flagged": sum(c["flagged"] for c in wrong),
@@ -136,6 +143,9 @@ def show(s) -> None:
     print(f"\n{'field':<18}{'n':>4}{'before verify':>16}{'after verify':>14}")
     for f, (n, b, a) in sorted(s["fields"].items()):
         print(f"{f:<18}{n:>4}{b / n:>15.0%} {a / n:>13.0%}")
+    print(f"\n{'warning sign':<22}{'fields':>7}{'wrong':>7}   (a useful sign is wrong far more often than '(no signal)')")
+    for name, (n, bad) in sorted(s["signals"].items()):
+        print(f"{name:<22}{n:>7}{bad / n:>7.0%}")
     print(f"\ndocuments {s['documents']} (errors {s['errors']}), document type correct: {s['type_ok']}")
     print(f"verifier: fixed {s['verifier_fixed']} fields, broke {s['verifier_broke']}")
     print(f"documents with a wrong field: {s['wrong_docs']} - flagged for review {s['wrong_flagged']}, "

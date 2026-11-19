@@ -36,6 +36,7 @@ flowchart TD
 | 2 | Classify | One call per page. A page with 200+ characters of text goes to the text-only model; a sparse page goes to the vision model. Types come from the schema filenames plus `unknown`. | `qwen3:4b` or `qwen2.5vl:3b` | ~45 s vision |
 | 3 | Extract | Asks for the schema's fields with constrained decoding, 4 pages per call, merging chunks. Unknown types use the generic schema. | `qwen2.5vl:3b` | ~60 s |
 | 4 | Verify | Re-reads every page (4 per call) with the answers in hand and is told to find mistakes. A field passes if any chunk confirms it. Corrections are applied and checked once more. Only scalar fields are verified. | `qwen2.5vl:3b` | ~85 s |
+| 4b | Signals | Caps a field's confidence at 0.4 if the verifier overruled it or the value is not on the page (`ai/ground.py`). | none | instant |
 | 5 | Validate | Runs the schema's `x-checks` on the corrected values. | none | instant |
 | 6 | Resolve | Folds `x-entity` fields into golden records. | none | instant |
 
@@ -76,7 +77,9 @@ sequenceDiagram
 
 A job is sent to the review queue when any of these holds:
 
-- a field's confidence is below 0.6 after verification
+- a field's confidence is below 0.6 after verification. A field is capped at 0.4
+  when the verifier overruled the first extraction (`verifier_overruled`) or its
+  value is in none of the page text (`not_on_page`), whatever the verifier claimed
 - the document type was classified with confidence below 0.6
 - an `x-checks` rule failed, **even when the model was confident**
 
@@ -122,5 +125,6 @@ flowchart LR
 - Documents over 10 pages are refused.
 - A worker crash can strand a job at `running`; there is no lease or heartbeat.
 - No bounding boxes: a value is not tied to where it appeared on the page.
-- Field confidence comes from the verifier's own report, which is a weak signal.
-  See the README backlog and `scripts/eval.py` for how it is measured.
+- Field confidence still starts from the verifier's own report, a weak signal, and
+  is only capped by the two warning signs. `scripts/eval.py` shows how well each
+  sign separates right values from wrong ones.

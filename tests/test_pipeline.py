@@ -369,7 +369,7 @@ def test_failed_check_forces_review_even_when_the_model_is_confident():
         pipeline.extract = lambda pages, schema: dict(fields)
         pipeline.verify = lambda pages, schema, f: (f, {k: 0.95 for k in f if k != "line_items"}, [])
         try:
-            return pipeline.run_pages([doc.Page(1, "", "text")], cls=fake_cls)
+            return pipeline.run_pages([doc.Page(1, "", "1040.00 200.55 1240.55 1250.55 2024-03-14 2024-04-13")], cls=fake_cls)
         finally:
             pipeline.extract, pipeline.verify = real_extract, real_verify
 
@@ -612,10 +612,51 @@ def test_eval_loads_sroie_labels_and_scores_the_verifier():
     broke = ev.score_case(truth, result({"merchant_name": "ACME", "total_amount": 9.0},
                                         {"merchant_name": "ACME", "total_amount": 99.0}, True, ["rule"]), "receipt")
     s = ev.summarize([fixed, broke, {"error": "boom"}])
+    assert s["signals"] == {"(no signal)": (4, 1)}
     assert (s["verifier_fixed"], s["verifier_broke"], s["errors"]) == (1, 1, 1)
     assert s["fields"]["total_amount"] == (2, 1, 1)
     assert (s["wrong_docs"], s["wrong_flagged"], s["wrong_caught_by_rules"], s["right_docs"]) == (1, 1, 1, 1)
     assert s["type_ok"] == "2/2"
+
+
+def test_grounded_finds_values_in_the_notation_the_page_uses():
+    from ai import ground
+
+    page = "Invoice INV-2024-0093\nDate: 14 March 2024\nTotal EUR 1.240,55  Paid 6.00\nNorthwind Supplies Ltd"
+    assert ground.grounded(1240.55, page) is True            # European notation
+    assert ground.grounded(1240.55, "Total 1,240.55") is True  # US notation
+    assert ground.grounded(1240.55, "Total 1 240,55") is True  # space-grouped
+    assert ground.grounded(6.0, page) is True
+    assert ground.grounded(6.0, "Total 16.00 and 6.005") is False  # inside other numbers
+    assert ground.grounded(999.0, page) is False
+    assert ground.grounded("2024-03-14", page) is True       # ISO value, written date on the page
+    assert ground.grounded("2024-03-15", page) is False
+    assert ground.grounded("INV-2024-0093", page) is True
+    assert ground.grounded("Northwind Supplies", page) is True
+    assert ground.grounded("Acme Robotics", page) is False
+    assert ground.grounded(None, page) is None and ground.grounded("x", "") is None  # can't tell
+    assert ground.grounded("GBP", page) is None               # too short to be evidence
+
+
+def test_signals_cap_confidence_so_a_confident_wrong_value_gets_reviewed():
+    """Extract stubbed to a total that is not on the page; the verifier is 0.95 sure of it.
+    A second field is overruled by the verifier. Neither warning is in the model's own claim."""
+    fake_cls = {"doc_type": "invoice", "confidence": 0.95, "reasoning": "x", "language": "en"}
+    extracted = {"total_amount": 999.0, "invoice_number": "INV-1", "vendor_name": "Northwind"}
+    verified = {"total_amount": 999.0, "invoice_number": "INV-2", "vendor_name": "Northwind"}
+    real_extract, real_verify = pipeline.extract, pipeline.verify
+    pipeline.extract = lambda pages, schema: dict(extracted)
+    pipeline.verify = lambda pages, schema, f: (dict(verified), {k: 0.95 for k in verified}, [])
+    try:
+        r = pipeline.run_pages([doc.Page(1, "", "Northwind INV-2 total 1240.55")], cls=fake_cls)
+    finally:
+        pipeline.extract, pipeline.verify = real_extract, real_verify
+
+    assert r["confidence_signals"] == {"total_amount": ["not_on_page"], "invoice_number": ["verifier_overruled"]}
+    assert r["field_confidence"]["total_amount"] == pipeline.SIGNAL_CAP < pipeline.FIELD_MIN_CONFIDENCE
+    assert r["field_confidence"]["vendor_name"] == 0.95
+    assert r["needs_review"] and sorted(r["low_confidence_fields"]) == ["invoice_number", "total_amount"]
+    assert any(t["step"] == "signals" for t in r["trace"])
 
 
 # --- end to end: needs Ollama -------------------------------------------------

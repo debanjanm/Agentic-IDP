@@ -26,6 +26,7 @@ flowchart LR
         seg["segment.py"]
         docm["doc.py<br/>pages and text"]
         val["validate.py<br/>x-checks"]
+        gnd["ground.py<br/>value on the page?"]
         reg["registry.py<br/>schemas/*.json"]
         ocr["ocr.py"]
         llm["llm.py"]
@@ -48,6 +49,7 @@ flowchart LR
     resolve --> db
     pipe --> docm
     pipe --> val
+    pipe --> gnd
     pipe --> reg
     pipe --> llm
     seg --> pipe
@@ -77,6 +79,7 @@ directly. Entity resolution is in the backend for the same reason.
 | `ai/llm.py` | The only module that knows about Ollama. Passes a JSON Schema as `format` so decoding is constrained. |
 | `ai/pipeline.py` | `classify`, `extract`, `verify`, plus value coercion. `run` and `run_pages` are the entry points. |
 | `ai/segment.py` | Splits a multi-document upload into one group of pages per document. |
+| `ai/ground.py` | Is a value in the page text? One of the two evidence-based confidence signals. |
 | `ai/validate.py` | Runs a schema's `x-checks` rules against the extracted values. |
 | `ai/registry.py` | Schema registry and the check applied to user-supplied schemas. |
 | `ai/schemas/*.json` | One JSON Schema per document type. The filename is the type. |
