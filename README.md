@@ -35,11 +35,14 @@ backend/app/   API, worker, database, entity resolution, review (package `app`)
 ai/            document pipeline: OCR, classify, extract, verify, validate, schemas (package `ai`)
 frontend/      Streamlit UI (ui.py, .streamlit/ theme)
 scripts/       backend.sh, frontend.sh, eval.py
+docs/          architecture, solution flow, changelog
 tests/         test_pipeline.py
 assets/        sample documents + labels (assets/samples)
 artifacts/     generated output such as eval reports (git-ignored)
 data/          runtime database and uploads (git-ignored)
 ```
+
+Diagrams and the full flow are in [docs/](docs/architecture.md); history in [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## Setup
 
